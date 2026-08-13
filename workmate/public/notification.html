@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工作助手 WorkMate</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+      background: transparent;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+    }
+    .notification {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 340px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+      border: 1px solid #e5e7eb;
+      animation: slideIn 0.3s ease-out;
+      overflow: hidden;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(400px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    /* 延期警告风格 */
+    .notification.warning .header {
+      background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
+      border-bottom: 1px solid #fcd34d;
+    }
+    /* 多任务汇总风格 */
+    .notification.multi .header {
+      background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+      border-bottom: 1px solid #fca5a5;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+    }
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .icon { font-size: 20px; }
+    .header-title { font-weight: 600; color: #1f2937; font-size: 13px; }
+    .header-subtitle { font-size: 10px; color: #6b7280; }
+    .close-btn-x {
+      width: 22px; height: 22px; border: none; background: transparent;
+      cursor: pointer; border-radius: 4px; color: #6b7280; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .close-btn-x:hover { background: rgba(0,0,0,0.08); }
+    .content { padding: 12px 14px; max-height: 80px; overflow: hidden; }
+    .content-title { font-weight: 600; font-size: 14px; color: #1f2937; margin-bottom: 4px; }
+    .content-body {
+      font-size: 12px; color: #4b5563; line-height: 1.4;
+      white-space: pre-wrap; word-break: break-word;
+      overflow: hidden; text-overflow: ellipsis;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    }
+    .actions {
+      display: flex; justify-content: flex-end; gap: 6px;
+      padding: 8px 14px; border-top: 1px solid #f3f4f6;
+    }
+    .btn {
+      padding: 6px 12px; border: none; border-radius: 5px; cursor: pointer;
+      font-size: 11px; font-weight: 500; transition: all 0.15s; user-select: none;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-close { background: #f3f4f6; color: #6b7280; }
+    .btn-close:hover { background: #e5e7eb; }
+    .btn-snooze { background: #fef3c7; color: #92400e; }
+    .btn-snooze:hover { background: #fde68a; }
+    .btn-complete { background: #d1fae5; color: #065f46; }
+    .btn-complete:hover { background: #a7f3d0; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div class="notification" id="notification" style="opacity:0; transition: opacity 0.15s;">
+    <div class="header">
+      <div class="header-left">
+        <span class="icon" id="notifIcon">⏰</span>
+        <div>
+          <div class="header-title" id="headerTitle">计划提醒</div>
+          <div class="header-subtitle" id="headerSubtitle">点击查看详情</div>
+        </div>
+      </div>
+      <button class="close-btn-x" id="closeBtnX" onclick="closeWindow()">✕</button>
+    </div>
+    <div class="content">
+      <div class="content-title" id="notif-title">任务提醒</div>
+      <div class="content-body" id="notif-body">加载中...</div>
+    </div>
+    <div class="actions" id="actions">
+      <button class="btn btn-close" id="btnClose" onclick="closeWindow()">关闭</button>
+      <button class="btn btn-complete" id="btnComplete" onclick="completeTask()">☐ 完成</button>
+      <button class="btn btn-snooze" id="btnSnooze" onclick="snoozeReminder()">🔔 稍后提醒</button>
+      <button class="btn btn-primary" id="btnView" onclick="viewDetails()">查看详情</button>
+    </div>
+  </div>
+
+  <script>
+    var currentPlanId = null;
+    var closeTimer = null;
+    var taskCount = 1;
+
+    // ---- 工具函数 ----
+    function getUrlParams() {
+      var params = {};
+      var query = window.location.search.substring(1);
+      if (!query) return params;
+      var vars = query.split('&');
+      for (var i = 0; i < vars.length; i++) {
+        var pair = vars[i].split('=');
+        if (pair.length === 2) {
+          try {
+            params[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1]);
+          } catch(e) {
+            params[pair[0]] = pair[1];
+          }
+        }
+      }
+      return params;
+    }
+
+    function closeWindow() {
+      if (closeTimer) clearTimeout(closeTimer);
+      // 多重关闭策略：优先 Tauri API，失败则用 browser API
+      try {
+        if (window.__TAURI__ && window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow) {
+          var w = window.__TAURI__.window.getCurrentWindow();
+          if (w && w.close) { w.close(); return; }
+        }
+      } catch(e) { /* fall through */ }
+      try {
+        if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+          window.__TAURI__.core.invoke('close_notification_window');
+          return;
+        }
+      } catch(e) { /* fall through */ }
+      // 最后兜底
+      window.close();
+    }
+
+    // ---- 按钮操作 ----
+    function viewDetails() {
+      if (closeTimer) clearTimeout(closeTimer);
+      // 通知主窗口跳转到对应计划
+      if (currentPlanId) {
+        try {
+          if (window.__TAURI__ && window.__TAURI__.event) {
+            window.__TAURI__.event.emit('navigate-to-plan', currentPlanId);
+          }
+        } catch (e) {
+          console.error('emit navigate-to-plan 失败:', e);
+        }
+      }
+      closeWindow();
+    }
+
+    function snoozeReminder() {
+      if (closeTimer) clearTimeout(closeTimer);
+      if (currentPlanId) {
+        try {
+          if (window.__TAURI__ && window.__TAURI__.core) {
+            window.__TAURI__.core.invoke('snooze_plan', { id: currentPlanId });
+            // 通知主窗口刷新数据
+            window.__TAURI__.event.emit('refresh-data');
+          }
+        } catch (e) {
+          console.error('稍后提醒失败:', e);
+        }
+      }
+      closeWindow();
+    }
+
+    function completeTask() {
+      if (closeTimer) clearTimeout(closeTimer);
+      if (currentPlanId) {
+        try {
+          if (window.__TAURI__ && window.__TAURI__.core) {
+            window.__TAURI__.core.invoke('complete_plan', { id: currentPlanId });
+            // 通知主窗口刷新数据 + 触发完成动画
+            window.__TAURI__.event.emit('refresh-data');
+          }
+        } catch (e) {
+          console.error('完成任务失败:', e);
+        }
+      }
+      closeWindow();
+    }
+
+    // ---- 更新内容 ----
+    function updateContent(title, body, planId, count) {
+      currentPlanId = planId || null;
+      taskCount = count ? parseInt(count) : 1;
+
+      document.getElementById('notif-title').textContent = title || '任务提醒';
+      document.getElementById('notif-body').textContent = body || '';
+      // 内容就绪，显示窗口
+      document.getElementById('notification').style.opacity = '1';
+
+      var notif = document.getElementById('notification');
+      var btnView = document.getElementById('btnView');
+      var btnSnooze = document.getElementById('btnSnooze');
+      var btnComplete = document.getElementById('btnComplete');
+
+      if (taskCount > 1) {
+        // 多任务汇总：只显示关闭按钮，隐藏操作按钮
+        notif.className = 'notification multi';
+        document.getElementById('headerSubtitle').textContent = '共 ' + taskCount + ' 个延期任务';
+        document.getElementById('notifIcon').textContent = '⚠️';
+        btnView.style.display = 'none';
+        btnSnooze.style.display = 'none';
+        btnComplete.style.display = 'none';
+      } else {
+        // 单任务：显示所有操作按钮
+        notif.className = 'notification warning';
+        document.getElementById('headerSubtitle').textContent = '点击查看详情';
+        document.getElementById('notifIcon').textContent = '⏰';
+        btnView.style.display = '';
+        btnSnooze.style.display = '';
+        btnComplete.style.display = '';
+      }
+
+      // 重置自动关闭定时器（5秒后自动关闭）
+      if (closeTimer) clearTimeout(closeTimer);
+      closeTimer = setTimeout(function() {
+        closeWindow();
+      }, 5000);
+    }
+
+    // ---- 初始化：从 URL 参数加载内容 ----
+    var params = getUrlParams();
+    updateContent(params.title, params.body, params.planId || null, params.count);
+
+    // 通知 Rust 端：页面已渲染完毕，可以显示了
+    try {
+      if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
+        window.__TAURI__.event.emit('notification-ready');
+      }
+    } catch(e) {
+      console.error('emit notification-ready 失败:', e);
+    }
+
+    // ---- 监听主进程推送的事件（用于动态更新内容） ----
+    function setupListener() {
+      try {
+        if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen) {
+          window.__TAURI__.event.listen('notification-data', function(event) {
+            var payload = event.payload || {};
+            updateContent(payload.title, payload.body, payload.planId, payload.count);
+          });
+        } else {
+          setTimeout(setupListener, 200);
+        }
+      } catch (e) {
+        console.error('监听通知事件失败:', e);
+      }
+    }
+    setupListener();
+  </script>
+</body>
+</html>
