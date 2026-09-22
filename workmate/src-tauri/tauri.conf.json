@@ -42,7 +42,8 @@
     "resources": [],
     "windows": {
       "webviewInstallMode": {
-        "type": "embedBootstrapper"
+        "type": "embedBootstrapper",
+        "silent": true
       }
     }
   },

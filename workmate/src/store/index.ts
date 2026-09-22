@@ -26,7 +26,8 @@ interface AppState {
 
   // 工作记录相关
   records: WorkRecord[];
-  loadRecords: (date?: string) => Promise<void>;
+  recordsRange: { startDate: string | null; endDate: string | null };
+  loadRecords: (startDate?: string, endDate?: string) => Promise<void>;
   createRecord: (input: CreateRecordInput) => Promise<WorkRecord>;
   updateRecord: (input: UpdateRecordInput) => Promise<WorkRecord>;
   deleteRecord: (id: string) => Promise<void>;
@@ -44,7 +45,8 @@ interface AppState {
 
   isRecordModalOpen: boolean;
   editingRecord: WorkRecord | null;
-  openRecordModal: (record?: WorkRecord) => void;
+  newRecordDate: string | null;
+  openRecordModal: (record?: WorkRecord, initialDate?: string) => void;
   closeRecordModal: () => void;
 
   // Toast通知
@@ -144,11 +146,21 @@ export const useStore = create<AppState>((set, get) => ({
 
   // 工作记录相关
   records: [],
+  recordsRange: { startDate: null, endDate: null },
 
-  loadRecords: async (date) => {
+  loadRecords: async (startDate, endDate) => {
     try {
-      const records = await invoke<WorkRecord[]>('get_records', { date: date || null });
-      set({ records });
+      const records = await invoke<WorkRecord[]>('get_records', {
+        startDate: startDate || null,
+        endDate: endDate || null,
+      });
+      set({
+        records,
+        recordsRange: {
+          startDate: startDate || null,
+          endDate: endDate || null,
+        },
+      });
     } catch (e) {
       console.error('加载记录失败:', e);
     }
@@ -156,19 +168,22 @@ export const useStore = create<AppState>((set, get) => ({
 
   createRecord: async (input) => {
     const record = await invoke<WorkRecord>('create_record', { input });
-    await get().loadRecords();
+    const { startDate, endDate } = get().recordsRange;
+    await get().loadRecords(startDate || undefined, endDate || undefined);
     return record;
   },
 
   updateRecord: async (input) => {
     const record = await invoke<WorkRecord>('update_record', { input });
-    await get().loadRecords();
+    const { startDate, endDate } = get().recordsRange;
+    await get().loadRecords(startDate || undefined, endDate || undefined);
     return record;
   },
 
   deleteRecord: async (id) => {
     await invoke('delete_record', { id });
-    await get().loadRecords();
+    const { startDate, endDate } = get().recordsRange;
+    await get().loadRecords(startDate || undefined, endDate || undefined);
   },
 
   // 设置相关
@@ -202,8 +217,17 @@ export const useStore = create<AppState>((set, get) => ({
 
   isRecordModalOpen: false,
   editingRecord: null,
-  openRecordModal: (record) => set({ isRecordModalOpen: true, editingRecord: record || null }),
-  closeRecordModal: () => set({ isRecordModalOpen: false, editingRecord: null }),
+  newRecordDate: null,
+  openRecordModal: (record, initialDate) => set({
+    isRecordModalOpen: true,
+    editingRecord: record || null,
+    newRecordDate: record ? null : initialDate || null,
+  }),
+  closeRecordModal: () => set({
+    isRecordModalOpen: false,
+    editingRecord: null,
+    newRecordDate: null,
+  }),
 
   // Toast通知
   toasts: [],

@@ -1,7 +1,7 @@
 // 定时提醒调度引擎 v3
 // 全部 6 种提醒类型 + 节假日智能处理
 // 规则：
-//   - 过期前/稍后/指定日期/snooze → 不受节假日影响，照常提醒
+//   - 过期前/截止临近/指定日期/snooze → 不受节假日影响，照常提醒
 //   - 每日/每周/每月提醒 → 遇节假日顺延到下一个工作日
 //   - 每周/每月若目标日恰好是节假日 → 顺延到之后第一个工作日
 //   - 同一计划 + 同一提醒类型 + 同一周期内仅通知一次
@@ -104,10 +104,10 @@ export function useReminder() {
     }
 
     // ==========================================
-    // 稍后提醒 — 不受节假日影响
+    // 截止临近提醒 — 不受节假日影响
     // ==========================================
     if (!isOverdue && plan.remind_later_enabled) {
-      const minutes = plan.remind_later_minutes || 1440;
+      const minutes = plan.remind_later_minutes || 60;
       const minsUntilDue = differenceInMinutes(dueDate, now);
       if (minsUntilDue > 0 && minsUntilDue <= minutes) {
         const key = makeKey('later', plan.id, todayStr);
@@ -192,7 +192,7 @@ export function useReminder() {
       const hourBlock = Math.floor(now.getHours() / Math.max(intervalHours, 0.5));
       const periodKey = `${todayStr}-h${hourBlock}`;
 
-      // 「稍后提醒」类型任务过期后，按频率提醒
+      // 「截止临近提醒」类型任务过期后，按频率提醒
       if (plan.remind_later_enabled) {
         const key = makeKey('overdue_later', plan.id, periodKey);
         if (!notifiedRef.current.has(key)) {

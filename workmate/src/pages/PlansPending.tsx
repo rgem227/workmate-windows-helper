@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Plan, Priority } from '../types';
 import { format, differenceInDays, isToday, isBefore } from 'date-fns';
 import { playSound } from '../utils/sound';
+import { formatNearDueReminder } from '../utils/reminders';
 
 type FilterType = 'all' | 'today' | 'within3days' | 'within7days' | 'overdue';
 type SortType = 'dueDate' | 'priority' | 'createdAt';
@@ -350,8 +351,7 @@ function getRemindTypeLabel(plan: Plan): string {
   const parts: string[] = [];
   if (plan.remind_expire_before_enabled) parts.push(`过期前${plan.remind_expire_before_days || 7}天`);
   if (plan.remind_later_enabled) {
-    const m = plan.remind_later_minutes || 1440;
-    parts.push(m < 60 ? `稍后${m}分钟` : m < 1440 ? `稍后${m / 60}小时` : '稍后1天');
+    parts.push(formatNearDueReminder(plan.remind_later_minutes));
   }
   if (plan.remind_daily_enabled) parts.push('每日' + (plan.remind_daily_time || '09:00'));
   if (plan.remind_weekly_enabled) {

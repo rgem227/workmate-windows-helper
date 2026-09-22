@@ -56,7 +56,7 @@
 
 ## 🚀 下载安装
 
-从 [Releases](../../releases) 页面下载最新版（v1.0.0）：
+可直接从仓库根目录获取最新版（v1.0.0），也可从 [Releases](../../releases) 页面下载：
 
 | 文件 | 说明 |
 |---|---|
@@ -68,7 +68,7 @@
 
 ---
 
-## �️ 技术栈
+## 技术栈
 
 | 层 | 技术 |
 |---|---|
@@ -84,14 +84,14 @@
 
 ---
 
-## �️ 项目结构
+## 项目结构
 
 ```
 windows小工具/
 ├── README.md                  # 本文件
 ├── SPEC.md                    # 详细需求规格说明书
 ├── 需求.txt                   # 用户原始需求
-├── WorkMate.exe               # 打包产物（不进 git，走 Release）
+├── WorkMate.exe               # 绿色版成品
 ├── WorkMate_1.0.0_x64-setup.exe
 ├── WorkMate_1.0.0_x64_en-US.msi
 └── workmate/                  # 源代码

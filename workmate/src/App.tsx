@@ -47,7 +47,7 @@ function App() {
         navigateToPlan(event.payload);
       }).then(fn => unlistens.push(fn));
 
-      // 通知窗口操作后刷新数据（稍后提醒 / 完成任务）
+      // 通知窗口操作后刷新数据（截止临近提醒 / 完成任务）
       listen('refresh-data', () => {
         loadPlans();
       }).then(fn => unlistens.push(fn));

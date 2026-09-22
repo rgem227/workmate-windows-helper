@@ -1,6 +1,7 @@
 // 数据导出页面 - 支持 CSV 和 Excel (.xlsx)
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { formatNearDueReminder } from '../utils/reminders';
 
 export default function DataExport() {
   const [exportPlans, setExportPlans] = useState(true);
@@ -144,8 +145,7 @@ export default function DataExport() {
       parts.push(`过期前${p.remind_expire_before_days || 7}天`);
     }
     if (p.remind_later_enabled) {
-      const m = p.remind_later_minutes || 1440;
-      parts.push(m < 60 ? `稍后${m}分钟` : m < 1440 ? `稍后${m / 60}小时` : '稍后1天');
+      parts.push(formatNearDueReminder(p.remind_later_minutes));
     }
     if (p.remind_daily_enabled) parts.push('每日');
     if (p.remind_weekly_enabled) parts.push('每周');
@@ -154,7 +154,7 @@ export default function DataExport() {
     // 兼容旧数据
     if (parts.length === 0 && p.remind_type) {
       const labels: Record<string, string> = {
-        expire_before: '过期前提醒', later: '稍后提醒', daily: '每日提醒',
+        expire_before: '过期前提醒', later: '截止临近提醒', daily: '每日提醒',
         weekly: '每周提醒', monthly: '每月提醒', once: '指定日期提醒', no_remind: '不提醒',
       };
       parts.push(labels[p.remind_type] || p.remind_type);

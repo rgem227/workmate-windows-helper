@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import type { CreateRecordInput } from '../types';
 
 export default function RecordModal() {
-  const { isRecordModalOpen, editingRecord, closeRecordModal, createRecord, updateRecord, plans, showAnimation } = useStore();
+  const { isRecordModalOpen, editingRecord, newRecordDate, closeRecordModal, createRecord, updateRecord, plans, showAnimation } = useStore();
 
   const [formData, setFormData] = useState<CreateRecordInput>({
     plan_id: null,
@@ -26,10 +26,10 @@ export default function RecordModal() {
       setFormData({
         plan_id: null,
         content: '',
-        record_date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+        record_date: newRecordDate || format(new Date(), "yyyy-MM-dd'T'HH:mm"),
       });
     }
-  }, [editingRecord, isRecordModalOpen]);
+  }, [editingRecord, isRecordModalOpen, newRecordDate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

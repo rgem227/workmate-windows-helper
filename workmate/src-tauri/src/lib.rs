@@ -5,6 +5,10 @@ use chrono::{DateTime, Datelike, Local};
 use directories::ProjectDirs;
 use rusqlite::{params, Connection, Result as SqlResult};
 use serde::{Deserialize, Serialize};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::panic;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -183,10 +187,59 @@ fn get_db_path() -> String {
     }
 }
 
+// 取安装目录 = 当前 exe 所在目录（NSIS 默认 %LOCALAPPDATA%\Programs\WorkMate\）
+fn get_install_dir() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|x| x.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+// 把追加一行写到指定日志文件（panic hook 用，绕过 tracing 直接落盘）
+fn append_to_log(path: &PathBuf, line: &str) {
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(f, "{}", line);
+    }
+}
+
 fn init_logging() {
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    // 1. 安装目录下建 logs/ 子目录，日志文件 logs/workmate.log
+    let install_dir = get_install_dir();
+    let logs_dir = install_dir.join("logs");
+    let _ = std::fs::create_dir_all(&logs_dir);
+    let log_file = logs_dir.join("workmate.log");
+
+    info!("日志文件路径: {}", log_file.display());
+
+    // 2. 注册 panic hook（必须在 tracing init 之前，确保任何阶段崩溃都能落盘）
+    let panic_log_path = log_file.clone();
+    panic::set_hook(Box::new(move |info| {
+        let ts = Local::now().to_rfc3339();
+        append_to_log(&panic_log_path, &format!("\n!!! PANIC at {} !!!", ts));
+        append_to_log(&panic_log_path, &format!("info: {}", info));
+        append_to_log(&panic_log_path, &format!("backtrace:\n{}", std::backtrace::Backtrace::capture()));
+    }));
+
+    // 3. tracing 输出到文件（文件打开失败时兜底走 stderr）
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    match OpenOptions::new().create(true).append(true).open(&log_file) {
+        Ok(file) => {
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .with_writer(file)
+                .with_ansi(false)
+                .init();
+        }
+        Err(e) => {
+            // 文件打不开（如权限），先记一条再退回 stderr
+            let _ = std::fs::write(&log_file, format!("[{}] FATAL: 无法打开日志文件用于 tracing: {}\n", Local::now().to_rfc3339(), e));
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .init();
+        }
+    }
 }
 
 fn init_database(conn: &Connection) -> SqlResult<()> {
@@ -267,6 +320,13 @@ fn init_database(conn: &Connection) -> SqlResult<()> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )",
+        [],
+    )?;
+
+    // 日历视图按日期区间读取记录，索引可避免年度视图扫描整张表。
+    // 注意：必须放在 CREATE TABLE work_records 之后，否则新库会因 "no such table" panic。
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_work_records_record_date ON work_records(record_date)",
         [],
     )?;
 
@@ -886,15 +946,26 @@ fn row_to_record(row: &rusqlite::Row) -> rusqlite::Result<WorkRecord> {
 }
 
 #[tauri::command]
-fn get_records(state: State<DbState>, date: Option<String>) -> Result<Vec<WorkRecord>, String> {
+fn get_records(
+    state: State<DbState>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+) -> Result<Vec<WorkRecord>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
 
-    if let Some(d) = date {
-        let pattern = format!("{}%", d);
+    if let (Some(start), Some(end)) = (start_date, end_date) {
+        let start_value = format!("{}T00:00:00", start);
+        let end_value = format!("{}T23:59:59", end);
         let mut stmt = conn
-            .prepare("SELECT * FROM work_records WHERE record_date LIKE ?1 ORDER BY record_date DESC")
+            .prepare(
+                "SELECT * FROM work_records
+                 WHERE record_date >= ?1 AND record_date <= ?2
+                 ORDER BY record_date DESC",
+            )
             .map_err(|e| e.to_string())?;
-        let records = stmt.query_map(params![pattern], row_to_record).map_err(|e| e.to_string())?;
+        let records = stmt
+            .query_map(params![start_value, end_value], row_to_record)
+            .map_err(|e| e.to_string())?;
         records.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
     } else {
         let mut stmt = conn
@@ -1922,7 +1993,7 @@ pub fn run() {
                             if let Some(window) = app.get_webview_window("main") {
                                 window.show().ok();
                                 window.set_focus().ok();
-                                window.emit("navigate", "/settings").ok();
+                                window.emit("navigate", "settings").ok();
                             }
                         }
                         "quit" => {
@@ -1999,9 +2070,12 @@ pub fn run() {
             clean_test_data,
         ])
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                window.hide().ok();
-                api.prevent_close();
+            // 只有主窗口关闭时隐藏到托盘；通知窗口必须允许真正销毁。
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    window.hide().ok();
+                    api.prevent_close();
+                }
             }
         })
         .run(tauri::generate_context!())

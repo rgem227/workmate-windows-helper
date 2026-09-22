@@ -130,71 +130,73 @@
       return params;
     }
 
-    function closeWindow() {
+    async function closeWindow() {
       if (closeTimer) clearTimeout(closeTimer);
-      // 多重关闭策略：优先 Tauri API，失败则用 browser API
+      // 优先销毁当前 Tauri 通知窗口，浏览器环境下再使用 window.close 兜底。
       try {
         if (window.__TAURI__ && window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow) {
           var w = window.__TAURI__.window.getCurrentWindow();
-          if (w && w.close) { w.close(); return; }
+          if (w && w.close) {
+            await w.close();
+            return;
+          }
         }
-      } catch(e) { /* fall through */ }
-      try {
-        if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
-          window.__TAURI__.core.invoke('close_notification_window');
-          return;
-        }
-      } catch(e) { /* fall through */ }
-      // 最后兜底
+      } catch (e) {
+        console.error('关闭通知窗口失败:', e);
+      }
       window.close();
     }
 
     // ---- 按钮操作 ----
-    function viewDetails() {
+    async function viewDetails() {
       if (closeTimer) clearTimeout(closeTimer);
-      // 通知主窗口跳转到对应计划
-      if (currentPlanId) {
-        try {
-          if (window.__TAURI__ && window.__TAURI__.event) {
-            window.__TAURI__.event.emit('navigate-to-plan', currentPlanId);
-          }
-        } catch (e) {
-          console.error('emit navigate-to-plan 失败:', e);
-        }
+      if (!currentPlanId) {
+        await closeWindow();
+        return;
       }
-      closeWindow();
+
+      try {
+        // 先显示主窗口，再发送导航事件，保证隐藏到托盘时也能看到详情。
+        await window.__TAURI__.core.invoke('show_main_window');
+        await window.__TAURI__.event.emit('navigate-to-plan', currentPlanId);
+        await closeWindow();
+      } catch (e) {
+        console.error('查看任务详情失败:', e);
+      }
     }
 
-    function snoozeReminder() {
+    async function snoozeReminder() {
       if (closeTimer) clearTimeout(closeTimer);
-      if (currentPlanId) {
-        try {
-          if (window.__TAURI__ && window.__TAURI__.core) {
-            window.__TAURI__.core.invoke('snooze_plan', { id: currentPlanId });
-            // 通知主窗口刷新数据
-            window.__TAURI__.event.emit('refresh-data');
-          }
-        } catch (e) {
-          console.error('稍后提醒失败:', e);
-        }
+      if (!currentPlanId) {
+        await closeWindow();
+        return;
       }
-      closeWindow();
+
+      try {
+        // 数据更新成功后再刷新主窗口，避免读到旧状态。
+        await window.__TAURI__.core.invoke('snooze_plan', { id: currentPlanId });
+        await window.__TAURI__.event.emit('refresh-data');
+        await closeWindow();
+      } catch (e) {
+        console.error('稍后提醒失败:', e);
+      }
     }
 
-    function completeTask() {
+    async function completeTask() {
       if (closeTimer) clearTimeout(closeTimer);
-      if (currentPlanId) {
-        try {
-          if (window.__TAURI__ && window.__TAURI__.core) {
-            window.__TAURI__.core.invoke('complete_plan', { id: currentPlanId });
-            // 通知主窗口刷新数据 + 触发完成动画
-            window.__TAURI__.event.emit('refresh-data');
-          }
-        } catch (e) {
-          console.error('完成任务失败:', e);
-        }
+      if (!currentPlanId) {
+        await closeWindow();
+        return;
       }
-      closeWindow();
+
+      try {
+        // 数据更新成功后再刷新主窗口，避免读到旧状态。
+        await window.__TAURI__.core.invoke('complete_plan', { id: currentPlanId });
+        await window.__TAURI__.event.emit('refresh-data');
+        await closeWindow();
+      } catch (e) {
+        console.error('完成任务失败:', e);
+      }
     }
 
     // ---- 更新内容 ----

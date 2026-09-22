@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import type { Plan, Priority } from '../types';
 import { format } from 'date-fns';
+import { formatNearDueReminder } from '../utils/reminders';
 
 export default function PlansCompleted() {
   const { completedPlans, deletePlan } = useStore();
@@ -70,8 +71,7 @@ export default function PlansCompleted() {
     const parts: string[] = [];
     if (plan.remind_expire_before_enabled) parts.push(`过期前${plan.remind_expire_before_days || 7}天`);
     if (plan.remind_later_enabled) {
-      const m = plan.remind_later_minutes || 1440;
-      parts.push(m < 60 ? `稍后${m}分钟` : m < 1440 ? `稍后${m / 60}小时` : '稍后1天');
+      parts.push(formatNearDueReminder(plan.remind_later_minutes));
     }
     if (plan.remind_daily_enabled) parts.push('每日');
     if (plan.remind_weekly_enabled) parts.push('每周');

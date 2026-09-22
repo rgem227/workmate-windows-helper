@@ -16,7 +16,7 @@ function getDefaultFormData(): CreatePlanInput {
     remind_expire_before_days: 7,
     remind_expire_before_time: '09:00',
     remind_later_enabled: false,
-    remind_later_minutes: 1440,
+    remind_later_minutes: 60,
     remind_daily_enabled: false,
     remind_daily_time: '09:00',
     remind_weekly_enabled: false,
@@ -59,7 +59,7 @@ export default function PlanModal() {
         remind_expire_before_days: editingPlan.remind_expire_before_days || 7,
         remind_expire_before_time: editingPlan.remind_expire_before_time || '09:00',
         remind_later_enabled: editingPlan.remind_later_enabled,
-        remind_later_minutes: editingPlan.remind_later_minutes || 1440,
+        remind_later_minutes: editingPlan.remind_later_minutes || 60,
         remind_daily_enabled: editingPlan.remind_daily_enabled,
         remind_daily_time: editingPlan.remind_daily_time || '09:00',
         remind_weekly_enabled: editingPlan.remind_weekly_enabled,
@@ -161,15 +161,17 @@ export default function PlanModal() {
                 </div>
               </ReminderToggle>
 
-              {/* 稍后提醒 */}
-              <ReminderToggle label="稍后提醒" description="截止前 N 分钟提醒一次"
+              {/* 截止临近提醒 */}
+              <ReminderToggle label="截止临近提醒" description="在截止时间前提醒一次"
                 enabled={formData.remind_later_enabled}
                 onToggle={v => update('remind_later_enabled', v)}>
                 <select value={formData.remind_later_minutes}
                   onChange={e => update('remind_later_minutes', Number(e.target.value))}
                   className="input text-xs w-auto">
                   <option value={15}>15分钟前</option><option value={30}>30分钟前</option>
-                  <option value={60}>1小时前</option><option value={1440}>1天前</option>
+                  <option value={60}>1小时前</option><option value={120}>2小时前</option>
+                  <option value={180}>3小时前</option><option value={240}>4小时前</option>
+                  <option value={300}>5小时前</option><option value={360}>6小时前</option>
                 </select>
               </ReminderToggle>
 
